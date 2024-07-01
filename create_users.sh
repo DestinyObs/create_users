@@ -13,15 +13,18 @@ trim() {
 # Function to create a group if it doesn't exist
 create_group_if_not_exists() {
     local group="$1"
-    if ! getent group "$group" >/dev/null 2>&1; then
-        sudo groupadd "$group"
-        if [ $? -eq 0 ]; then
-            log_message "Created group $group"
-        else
-            log_message "Failed to create group $group"
+    if [ "$group" != "www-data" ]; then  # Skip attempting to create 'www-data'
+        if ! getent group "$group" >/dev/null 2>&1; then
+            sudo groupadd "$group"
+            if [ $? -eq 0 ]; then
+                log_message "Created group $group"
+            else
+                log_message "Failed to create group $group"
+            fi
         fi
     fi
 }
+
 
 # Check if the script received the filename as an argument
 if [ $# -eq 0 ]; then
@@ -67,10 +70,12 @@ while IFS=';' read -r username groups; do
         continue
     fi
 
-    # Create the user with a home directory
+    # Create the user with a home directory and set permissions
     sudo useradd -m -s /bin/bash "$username"
     if [ $? -eq 0 ]; then
         log_message "Created user $username"
+        # Set permissions for home directory
+        sudo chmod 700 "/home/$username"
     else
         log_message "Failed to create user $username"
         continue
@@ -86,12 +91,15 @@ while IFS=';' read -r username groups; do
         fi
     fi
 
-    # Add the user to additional groups
-    IFS=',' read -r -a group_array <<< "$groups"
-    for group in "${group_array[@]}"; do
-        group=$(trim "$group")
-        if [ -n "$group" ]; then
-            create_group_if_not_exists "$group"
+   # Add the user to additional groups
+IFS=',' read -r -a group_array <<< "$groups"
+for group in "${group_array[@]}"; do
+    group=$(trim "$group")
+    if [ -n "$group" ]; then
+        create_group_if_not_exists "$group"
+        if getent group "$group" | grep &>/dev/null "\b$username\b"; then
+            log_message "$username is already a member of group $group"
+        else
             sudo usermod -a -G "$group" "$username"
             if [ $? -eq 0 ]; then
                 log_message "Added $username to group $group"
@@ -99,7 +107,9 @@ while IFS=';' read -r username groups; do
                 log_message "Failed to add $username to group $group"
             fi
         fi
-    done
+    fi
+done
+
 
     # Generate a random password
     password=$(openssl rand -base64 12)
