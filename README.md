@@ -34,7 +34,7 @@ This project is part of HNG11's DevOps track, focusing on creating a user manage
 
 3. **Run the Script**:
    ```bash
-   sudo ./create_users.sh input_file.txt
+   bash create_users.sh input_file.txt
    ```
 
 4. **Verify Output**: Check `/var/log/user_management.log` for detailed logs on user creation and group assignments.
