@@ -28,34 +28,45 @@ log_message() {
     echo "$(date): $1" | sudo tee -a $LOG_FILE
 }
 
+# Function to trim leading/trailing whitespace
+trim() {
+    echo "$1" | xargs
+}
+
 # Read the input file line by line
 while IFS=';' read -r username groups; do
     # Trim leading/trailing whitespace from username and groups
-    username=$(echo $username | xargs)
-    groups=$(echo $groups | xargs)
+    username=$(trim "$username")
+    groups=$(trim "$groups")
     
     # Check if the user already exists
-    if id -u $username >/dev/null 2>&1; then
+    if id -u "$username" >/dev/null 2>&1; then
         log_message "User $username already exists"
         continue
     fi
 
     # Create the user with a home directory
-    sudo useradd -m -s /bin/bash $username
+    sudo useradd -m -s /bin/bash "$username"
     log_message "Created user $username"
 
-    # Create a group with the same name as the username
-    sudo groupadd $username
-    sudo usermod -a -G $username $username
-    log_message "Created group $username and added $username to it"
+    # Create a group with the same name as the username if it doesn't exist
+    if ! getent group "$username" >/dev/null 2>&1; then
+        sudo groupadd "$username"
+        log_message "Created group $username"
+    fi
+    sudo usermod -a -G "$username" "$username"
+    log_message "Added $username to group $username"
 
     # Add the user to additional groups
     IFS=',' read -r -a group_array <<< "$groups"
     for group in "${group_array[@]}"; do
-        group=$(echo $group | xargs)
+        group=$(trim "$group")
         if [ -n "$group" ]; then
-            sudo groupadd $group 2>/dev/null
-            sudo usermod -a -G $group $username
+            if ! getent group "$group" >/dev/null 2>&1; then
+                sudo groupadd "$group"
+                log_message "Created group $group"
+            fi
+            sudo usermod -a -G "$group" "$username"
             log_message "Added $username to group $group"
         fi
     done
