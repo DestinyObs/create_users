@@ -1,4 +1,4 @@
-# HNG11 Task 2: User Management Script
+# HNG11 Task 1: User Management Script
 
 This project is part of HNG11's DevOps track, focusing on creating a user management script for Linux environments. The script automates the creation of user accounts, assignment of groups, and password management based on input from a text file.
 
