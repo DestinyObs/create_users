@@ -1,5 +1,24 @@
 #!/bin/bash
 
+# Function to log messages
+log_message() {
+    echo "$(date): $1" | sudo tee -a $LOG_FILE
+}
+
+# Function to trim leading/trailing whitespace
+trim() {
+    echo "$1" | xargs
+}
+
+# Function to create a group if it doesn't exist
+create_group_if_not_exists() {
+    local group="$1"
+    if ! getent group "$group" >/dev/null 2>&1; then
+        sudo groupadd "$group"
+        log_message "Created group $group"
+    fi
+}
+
 # Check if the script received the filename as an argument
 if [ $# -eq 0 ]; then
     echo "Usage: $0 <filename>"
@@ -23,18 +42,11 @@ sudo truncate -s 0 $PASSWORD_FILE
 # Set secure permissions for the password file
 sudo chmod 600 $PASSWORD_FILE
 
-# Function to log messages
-log_message() {
-    echo "$(date): $1" | sudo tee -a $LOG_FILE
-}
-
-# Function to trim leading/trailing whitespace
-trim() {
-    echo "$1" | xargs
-}
-
 # Read the input file line by line
 while IFS=';' read -r username groups; do
+    # Debugging output
+    echo "Processing user: $username with groups: $groups"
+
     # Trim leading/trailing whitespace from username and groups
     username=$(trim "$username")
     groups=$(trim "$groups")
@@ -49,23 +61,18 @@ while IFS=';' read -r username groups; do
     sudo useradd -m -s /bin/bash "$username"
     log_message "Created user $username"
 
-    # Create a group with the same name as the username if it doesn't exist
-    if ! getent group "$username" >/dev/null 2>&1; then
-        sudo groupadd "$username"
-        log_message "Created group $username"
+    # Set the primary group to the username's group (if not the same as username)
+    if [ "$username" != "$groups" ]; then
+        sudo usermod -g "$groups" "$username"
+        log_message "Set primary group for $username to $groups"
     fi
-    sudo usermod -a -G "$username" "$username"
-    log_message "Added $username to group $username"
 
     # Add the user to additional groups
     IFS=',' read -r -a group_array <<< "$groups"
     for group in "${group_array[@]}"; do
         group=$(trim "$group")
         if [ -n "$group" ]; then
-            if ! getent group "$group" >/dev/null 2>&1; then
-                sudo groupadd "$group"
-                log_message "Created group $group"
-            fi
+            create_group_if_not_exists "$group"
             sudo usermod -a -G "$group" "$username"
             log_message "Added $username to group $group"
         fi
