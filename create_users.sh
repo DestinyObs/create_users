@@ -13,18 +13,18 @@ trim() {
 # Function to create a group if it doesn't exist
 create_group_if_not_exists() {
     local group="$1"
-    if [ "$group" != "www-data" ]; then  # Skip attempting to create 'www-data'
-        if ! getent group "$group" >/dev/null 2>&1; then
-            sudo groupadd "$group"
+    IFS=',' read -r -a group_parts <<< "$group"
+    for part in "${group_parts[@]}"; do
+        if ! getent group "$part" >/dev/null 2>&1; then
+            sudo groupadd "$part"
             if [ $? -eq 0 ]; then
-                log_message "Created group $group"
+                log_message "Created group $part"
             else
-                log_message "Failed to create group $group"
+                log_message "Failed to create group $part"
             fi
         fi
-    fi
+    done
 }
-
 
 # Check if the script received the filename as an argument
 if [ $# -eq 0 ]; then
@@ -91,25 +91,24 @@ while IFS=';' read -r username groups; do
         fi
     fi
 
-   # Add the user to additional groups
-IFS=',' read -r -a group_array <<< "$groups"
-for group in "${group_array[@]}"; do
-    group=$(trim "$group")
-    if [ -n "$group" ]; then
-        create_group_if_not_exists "$group"
-        if getent group "$group" | grep &>/dev/null "\b$username\b"; then
-            log_message "$username is already a member of group $group"
-        else
-            sudo usermod -a -G "$group" "$username"
-            if [ $? -eq 0 ]; then
-                log_message "Added $username to group $group"
+    # Add the user to additional groups
+    IFS=',' read -r -a group_array <<< "$groups"
+    for group in "${group_array[@]}"; do
+        group=$(trim "$group")
+        if [ -n "$group" ]; then
+            create_group_if_not_exists "$group"
+            if getent group "$group" | grep &>/dev/null "\b$username\b"; then
+                log_message "$username is already a member of group $group"
             else
-                log_message "Failed to add $username to group $group"
+                sudo usermod -a -G "$group" "$username"
+                if [ $? -eq 0 ]; then
+                    log_message "Added $username to group $group"
+                else
+                    log_message "Failed to add $username to group $group"
+                fi
             fi
         fi
-    fi
-done
-
+    done
 
     # Generate a random password
     password=$(openssl rand -base64 12)
