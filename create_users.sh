@@ -2,7 +2,7 @@
 
 # Function to log messages
 log_message() {
-    echo "$(date): $1" | sudo tee -a $LOG_FILE
+    echo "$(date): $1" | sudo tee -a "$LOG_FILE"
 }
 
 # Function to trim leading/trailing whitespace
@@ -15,7 +15,11 @@ create_group_if_not_exists() {
     local group="$1"
     if ! getent group "$group" >/dev/null 2>&1; then
         sudo groupadd "$group"
-        log_message "Created group $group"
+        if [ $? -eq 0 ]; then
+            log_message "Created group $group"
+        else
+            log_message "Failed to create group $group"
+        fi
     fi
 }
 
@@ -25,7 +29,7 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-FILENAME=$1
+FILENAME="$1"
 
 # Log file and secure password file locations
 LOG_FILE="/var/log/user_management.log"
@@ -36,11 +40,11 @@ sudo mkdir -p /var/log
 sudo mkdir -p /var/secure
 
 # Create or clear log and password files
-sudo truncate -s 0 $LOG_FILE
-sudo truncate -s 0 $PASSWORD_FILE
+sudo truncate -s 0 "$LOG_FILE"
+sudo truncate -s 0 "$PASSWORD_FILE"
 
 # Set secure permissions for the password file
-sudo chmod 600 $PASSWORD_FILE
+sudo chmod 600 "$PASSWORD_FILE"
 
 # Read the input file line by line
 while IFS=';' read -r username groups; do
@@ -51,6 +55,12 @@ while IFS=';' read -r username groups; do
     username=$(trim "$username")
     groups=$(trim "$groups")
     
+    # Validate username and group names
+    if ! [[ "$username" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+        log_message "Invalid username: $username"
+        continue
+    fi
+
     # Check if the user already exists
     if id -u "$username" >/dev/null 2>&1; then
         log_message "User $username already exists"
@@ -59,12 +69,21 @@ while IFS=';' read -r username groups; do
 
     # Create the user with a home directory
     sudo useradd -m -s /bin/bash "$username"
-    log_message "Created user $username"
+    if [ $? -eq 0 ]; then
+        log_message "Created user $username"
+    else
+        log_message "Failed to create user $username"
+        continue
+    fi
 
     # Set the primary group to the username's group (if not the same as username)
     if [ "$username" != "$groups" ]; then
         sudo usermod -g "$groups" "$username"
-        log_message "Set primary group for $username to $groups"
+        if [ $? -eq 0 ]; then
+            log_message "Set primary group for $username to $groups"
+        else
+            log_message "Failed to set primary group for $username to $groups"
+        fi
     fi
 
     # Add the user to additional groups
@@ -74,17 +93,25 @@ while IFS=';' read -r username groups; do
         if [ -n "$group" ]; then
             create_group_if_not_exists "$group"
             sudo usermod -a -G "$group" "$username"
-            log_message "Added $username to group $group"
+            if [ $? -eq 0 ]; then
+                log_message "Added $username to group $group"
+            else
+                log_message "Failed to add $username to group $group"
+            fi
         fi
     done
 
     # Generate a random password
     password=$(openssl rand -base64 12)
     echo "$username:$password" | sudo chpasswd
-    log_message "Set password for $username"
+    if [ $? -eq 0 ]; then
+        log_message "Set password for $username"
+    else
+        log_message "Failed to set password for $username"
+    fi
 
     # Store the username and password securely
-    echo "$username,$password" | sudo tee -a $PASSWORD_FILE
+    echo "$username,$password" | sudo tee -a "$PASSWORD_FILE"
 done < "$FILENAME"
 
 # Final log message
